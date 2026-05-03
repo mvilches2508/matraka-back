@@ -1,23 +1,36 @@
-import { createClient } from '@supabase/supabase-js'
+import { createClient, SupabaseClient } from '@supabase/supabase-js'
 
-const supabaseUrl = process.env.SUPABASE_URL!
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
-
-if (!supabaseUrl || !supabaseServiceKey) {
-  throw new Error('Missing Supabase env vars: SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY required')
+function getEnv(key: string): string {
+  const val = process.env[key]
+  if (!val) throw new Error(`Missing required env var: ${key}`)
+  return val
 }
 
+let _supabaseAdmin: SupabaseClient | null = null
+
 // Cliente con service_role para operaciones del backend (bypass RLS cuando necesario)
-export const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
-  auth: {
-    autoRefreshToken: false,
-    persistSession: false,
+export function getSupabaseAdmin(): SupabaseClient {
+  if (!_supabaseAdmin) {
+    _supabaseAdmin = createClient(getEnv('SUPABASE_URL'), getEnv('SUPABASE_SERVICE_ROLE_KEY'), {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+      },
+    })
+  }
+  return _supabaseAdmin
+}
+
+// Alias para compatibilidad — se inicializa lazy en primer uso
+export const supabaseAdmin = new Proxy({} as SupabaseClient, {
+  get(_target, prop) {
+    return (getSupabaseAdmin() as any)[prop]
   },
 })
 
 // Helper: crear cliente con el JWT del usuario (respeta RLS)
 export const supabaseWithAuth = (jwt: string) =>
-  createClient(supabaseUrl, process.env.SUPABASE_ANON_KEY!, {
+  createClient(getEnv('SUPABASE_URL'), getEnv('SUPABASE_ANON_KEY'), {
     global: { headers: { Authorization: `Bearer ${jwt}` } },
     auth: { autoRefreshToken: false, persistSession: false },
   })
