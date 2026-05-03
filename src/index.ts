@@ -73,6 +73,61 @@ app.get('/health', (_, res) => {
   })
 })
 
+// ── Shopify OAuth callback (temporal — para obtener access token) ──
+// Eliminar una vez que SHOPIFY_ACCESS_TOKEN esté en las env vars de Vercel
+app.get('/auth/shopify/callback', async (req, res) => {
+  const { code, shop } = req.query as { code?: string; shop?: string }
+
+  if (!code || !shop) {
+    res.status(400).send('Faltan parámetros: code o shop')
+    return
+  }
+
+  const clientId = process.env.SHOPIFY_CLIENT_ID
+  const clientSecret = process.env.SHOPIFY_CLIENT_SECRET
+
+  if (!clientId || !clientSecret || clientSecret === 'PEGAR_AQUI_EL_SECRET_DEL_DEV_DASHBOARD') {
+    res.status(500).send('SHOPIFY_CLIENT_ID / SHOPIFY_CLIENT_SECRET no configurados en .env')
+    return
+  }
+
+  try {
+    const tokenRes = await fetch(`https://${shop}/admin/oauth/access_token`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        client_id: clientId,
+        client_secret: clientSecret,
+        code,
+      }),
+    })
+
+    const tokenData = await tokenRes.json() as { access_token?: string; error?: string }
+
+    if (!tokenRes.ok || !tokenData.access_token) {
+      console.error('[Shopify OAuth] Error:', tokenData)
+      res.status(500).send(`Error obteniendo token: ${JSON.stringify(tokenData)}`)
+      return
+    }
+
+    const token = tokenData.access_token
+    console.log('✅ SHOPIFY ACCESS TOKEN OBTENIDO:', token)
+
+    // Devuelve el token en la respuesta para copiarlo
+    res.send(`
+      <html><body style="font-family:monospace;padding:40px;background:#111;color:#0f0">
+        <h2 style="color:#ff0">✅ Access Token obtenido correctamente</h2>
+        <p>Copia este valor y agrégalo como <strong>SHOPIFY_ACCESS_TOKEN</strong> en las variables de entorno de Vercel:</p>
+        <pre style="background:#222;padding:20px;border-radius:8px;font-size:18px;color:#0ff;word-break:break-all">${token}</pre>
+        <p style="color:#888">Luego elimina la ruta /auth/shopify/callback del código.</p>
+      </body></html>
+    `)
+  } catch (err) {
+    console.error('[Shopify OAuth] Excepción:', err)
+    res.status(500).send(`Excepción: ${(err as Error).message}`)
+  }
+})
+
 // ── Rutas API ──────────────────────────────────────────────────────
 app.use('/api/producers', producersRouter)
 app.use('/api/events', eventsRouter)
