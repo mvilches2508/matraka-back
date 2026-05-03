@@ -223,3 +223,152 @@ export async function sendTicketEmail(params: TicketEmailParams): Promise<void> 
 
   console.log(`[email] ✓ ${tickets.length} ticket(s) enviados a ${buyerEmail} para "${eventName}"`)
 }
+
+// ── Email al admin cuando un evento pasa a revisión ───────────────
+export async function sendAdminReviewEmail(params: {
+  eventId: string
+  eventName: string
+  producerName: string
+  producerEmail: string
+  venue: string
+  city: string
+  eventDate: string
+  ticketTypes: Array<{ name: string; price: number; quantity: number }>
+  approveUrl: string
+}): Promise<void> {
+  const { eventId, eventName, producerName, producerEmail, venue, city, eventDate, ticketTypes, approveUrl } = params
+
+  const dateFormatted = new Date(eventDate).toLocaleDateString('es-CL', {
+    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+  })
+  const timeFormatted = new Date(eventDate).toLocaleTimeString('es-CL', {
+    hour: '2-digit', minute: '2-digit',
+  })
+
+  const ticketRows = ticketTypes.map(t =>
+    `<tr>
+      <td style="padding:8px 12px;border-bottom:1px solid #2a2a2a;color:#F0EDE8;">${t.name}</td>
+      <td style="padding:8px 12px;border-bottom:1px solid #2a2a2a;color:#FFE500;">$${t.price.toLocaleString('es-CL')}</td>
+      <td style="padding:8px 12px;border-bottom:1px solid #2a2a2a;color:#F0EDE8;">${t.quantity}</td>
+    </tr>`
+  ).join('')
+
+  const html = `
+<!DOCTYPE html>
+<html lang="es">
+<head><meta charset="UTF-8"/></head>
+<body style="margin:0;padding:32px;background:#111;font-family:Arial,sans-serif;">
+  <table width="560" style="margin:0 auto;background:#1A1A1A;border-radius:12px;overflow:hidden;border:1px solid #2A2A2A;">
+    <tr><td style="background:#FFE500;padding:16px 28px;">
+      <span style="font-size:18px;font-weight:900;color:#0A0A0A;letter-spacing:2px;">MATRAKA — REVISIÓN DE EVENTO</span>
+    </td></tr>
+    <tr><td style="padding:28px;">
+      <p style="color:#888;font-size:13px;margin:0 0 4px;">Evento</p>
+      <p style="color:#F0EDE8;font-size:22px;font-weight:900;margin:0 0 20px;">${eventName}</p>
+
+      <p style="color:#888;font-size:13px;margin:0 0 4px;">Productor</p>
+      <p style="color:#F0EDE8;font-size:15px;margin:0 0 4px;"><strong>${producerName}</strong></p>
+      <p style="color:#888;font-size:13px;margin:0 0 20px;">${producerEmail}</p>
+
+      <p style="color:#888;font-size:13px;margin:0 0 4px;">Fecha</p>
+      <p style="color:#F0EDE8;font-size:15px;margin:0 0 4px;text-transform:capitalize;">${dateFormatted} — ${timeFormatted} hrs</p>
+      <p style="color:#888;font-size:13px;margin:0 0 20px;">${venue}, ${city}</p>
+
+      <p style="color:#888;font-size:13px;margin:0 0 10px;">Tipos de entrada</p>
+      <table width="100%" style="border-collapse:collapse;margin-bottom:28px;">
+        <thead>
+          <tr style="background:#0A0A0A;">
+            <th style="padding:8px 12px;text-align:left;font-size:11px;color:#555;text-transform:uppercase;">Nombre</th>
+            <th style="padding:8px 12px;text-align:left;font-size:11px;color:#555;text-transform:uppercase;">Precio</th>
+            <th style="padding:8px 12px;text-align:left;font-size:11px;color:#555;text-transform:uppercase;">Cantidad</th>
+          </tr>
+        </thead>
+        <tbody>${ticketRows}</tbody>
+      </table>
+
+      <a href="${approveUrl}"
+        style="display:block;text-align:center;background:#FFE500;color:#0A0A0A;font-size:16px;font-weight:900;padding:16px 32px;border-radius:8px;text-decoration:none;letter-spacing:1px;margin-bottom:16px;">
+        ✅ APROBAR Y PUBLICAR EVENTO
+      </a>
+
+      <p style="color:#555;font-size:11px;text-align:center;margin:0;">
+        ID del evento: ${eventId} · O entra al
+        <a href="https://portal.matraka-tickets.com/dashboard/admin" style="color:#FFE500;">panel admin</a>
+      </p>
+    </td></tr>
+  </table>
+</body>
+</html>`
+
+  await resend.emails.send({
+    from: `${APP_NAME} <${FROM_EMAIL}>`,
+    to: 'hola@matraka-tickets.com',
+    subject: `🎪 Nuevo evento para revisión: ${eventName}`,
+    html,
+  })
+
+  console.log(`[email] ✓ Admin notificado sobre evento "${eventName}"`)
+}
+
+// ── Email al productor cuando su evento fue aprobado ─────────────
+export async function sendProducerApprovedEmail(params: {
+  producerEmail: string
+  producerName: string
+  eventName: string
+  eventDate: string
+  venue: string
+  shopifyUrl?: string
+}): Promise<void> {
+  const { producerEmail, producerName, eventName, eventDate, venue, shopifyUrl } = params
+
+  const dateFormatted = new Date(eventDate).toLocaleDateString('es-CL', {
+    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+  })
+
+  const html = `
+<!DOCTYPE html>
+<html lang="es">
+<head><meta charset="UTF-8"/></head>
+<body style="margin:0;padding:32px;background:#111;font-family:Arial,sans-serif;">
+  <table width="560" style="margin:0 auto;background:#1A1A1A;border-radius:12px;overflow:hidden;border:1px solid #2A2A2A;">
+    <tr><td style="background:#FFE500;padding:16px 28px;">
+      <span style="font-size:18px;font-weight:900;color:#0A0A0A;letter-spacing:2px;">¡EVENTO PUBLICADO! 🎉</span>
+    </td></tr>
+    <tr><td style="padding:28px;">
+      <p style="color:#F0EDE8;font-size:16px;margin:0 0 20px;">Hola <strong>${producerName}</strong>,</p>
+      <p style="color:#F0EDE8;font-size:15px;margin:0 0 20px;">
+        Tu evento <strong style="color:#FFE500;">${eventName}</strong> fue aprobado y ya está publicado.
+        La gente puede comprar entradas ahora mismo 🚀
+      </p>
+
+      <div style="background:#0A0A0A;border-radius:8px;padding:20px;margin-bottom:24px;">
+        <p style="color:#888;font-size:12px;margin:0 0 4px;text-transform:uppercase;letter-spacing:1px;">Evento</p>
+        <p style="color:#F0EDE8;font-size:18px;font-weight:700;margin:0 0 8px;">${eventName}</p>
+        <p style="color:#888;font-size:13px;margin:0;text-transform:capitalize;">${dateFormatted} · ${venue}</p>
+      </div>
+
+      ${shopifyUrl ? `
+      <a href="${shopifyUrl}"
+        style="display:block;text-align:center;background:#FFE500;color:#0A0A0A;font-size:15px;font-weight:900;padding:14px 32px;border-radius:8px;text-decoration:none;margin-bottom:20px;">
+        Ver mi evento en la tienda →
+      </a>` : ''}
+
+      <p style="color:#555;font-size:12px;text-align:center;margin:0;">
+        Recuerda: recibes el pago 48 horas antes del evento.<br/>
+        Cualquier duda escríbenos a
+        <a href="mailto:hola@matraka-tickets.com" style="color:#FFE500;">hola@matraka-tickets.com</a>
+      </p>
+    </td></tr>
+  </table>
+</body>
+</html>`
+
+  await resend.emails.send({
+    from: `${APP_NAME} <${FROM_EMAIL}>`,
+    to: producerEmail,
+    subject: `✅ Tu evento "${eventName}" ya está publicado`,
+    html,
+  })
+
+  console.log(`[email] ✓ Productor ${producerEmail} notificado: evento aprobado`)
+}
