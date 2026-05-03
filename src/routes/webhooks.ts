@@ -82,14 +82,18 @@ router.post(
       return
     }
 
-    // Responder 200 inmediatamente (Shopify necesita respuesta rápida)
-    res.status(200).json({ received: true })
-
-    // Procesar en background (no bloquea la respuesta)
+    // Procesar sincrónicamente antes de responder
+    // (En Vercel serverless el proceso se mata al enviar la respuesta,
+    //  por lo que async post-response no funciona)
     const order: ShopifyOrder = JSON.parse(rawBody.toString())
-    processShopifyOrder(order).catch(err => {
+    try {
+      await processShopifyOrder(order)
+    } catch (err) {
       console.error('[webhook] Error procesando orden Shopify:', err)
-    })
+      // Devolvemos 200 igual para que Shopify no reintente infinitamente
+    }
+
+    res.status(200).json({ received: true })
   }
 )
 

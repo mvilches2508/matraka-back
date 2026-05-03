@@ -16,6 +16,9 @@ import webhooksRouter from './routes/webhooks'
 const app = express()
 const PORT = process.env.PORT || 3001
 
+// Confiar en el proxy de Vercel (necesario para express-rate-limit en producción)
+app.set('trust proxy', 1)
+
 // ── Seguridad y middleware base ────────────────────────────────────
 app.use(helmet())
 app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'))
