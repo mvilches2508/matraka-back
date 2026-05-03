@@ -97,4 +97,11 @@ app.use((err: Error, _req: express.Request, res: express.Response, _next: expres
   })
 })
 
-// ── Arrancar servidor (solo en desarrollo) ─────────────�
+// ── Arrancar servidor (solo en desarrollo) ───────────────────────
+if (process.env.NODE_ENV !== 'production') {
+  app.listen(PORT, () => {
+    console.log(`🚀 Matraka API corriendo en http://localhost:${PORT}`)
+  })
+}
+
+export default app
