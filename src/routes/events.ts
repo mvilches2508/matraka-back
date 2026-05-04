@@ -431,8 +431,8 @@ router.post('/:id/approve', async (req: AuthRequest, res: Response) => {
     console.warn('[approve] SHOPIFY_ACCESS_TOKEN no configurado — omitiendo integración Shopify')
   }
 
-  // Actualizar evento a activo
-  const updatePayload: Record<string, unknown> = { status: 'activo' }
+  // Actualizar evento a published
+  const updatePayload: Record<string, unknown> = { status: 'published' }
   if (shopifyCollectionId) updatePayload.shopify_collection_id = shopifyCollectionId
 
   const { data: updatedEvent, error: updateErr } = await supabaseAdmin
@@ -546,4 +546,4 @@ router.delete('/:id', requireAuth, async (req: AuthRequest, res: Response) => {
   res.status(204).send()
 })
 
-export default router
+export default r
