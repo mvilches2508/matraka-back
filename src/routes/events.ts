@@ -546,4 +546,4 @@ router.delete('/:id', requireAuth, async (req: AuthRequest, res: Response) => {
   res.status(204).send()
 })
 
-export default r
+export default router
