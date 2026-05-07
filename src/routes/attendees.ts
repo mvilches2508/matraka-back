@@ -95,11 +95,11 @@ router.post('/validate', requireAuth, async (req: AuthRequest, res: Response) =>
 
   // Verificar si la orden fue cancelada
   const orderData = (attendee as any).orders as { id: string; payment_status: string } | null
-  if (orderData?.payment_status === 'cancelled') {
+  if (orderData?.payment_status === 'refunded') {
     res.json({
       valid: false,
       cancelled: true,
-      error: 'Esta entrada fue cancelada y no es válida.',
+      error: 'Esta entrada fue anulada y no es válida.',
       attendee: {
         name: attendee.attendee_name,
         email: attendee.attendee_email,

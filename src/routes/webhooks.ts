@@ -296,7 +296,7 @@ async function processShopifyOrder(order: ShopifyOrder): Promise<void> {
  * El validador de QR (attendees.ts) rechaza entradas cuya orden esté cancelada.
  */
 router.post(
-  '/shopify/orders-cancelled',
+  '/shopify/orders-refunded',
   express_raw_middleware,
   async (req: Request, res: Response) => {
     const hmacHeader = req.headers['x-shopify-hmac-sha256'] as string
@@ -348,7 +348,7 @@ async function cancelShopifyOrder(shopifyOrderId: string): Promise<void> {
 
   const { error } = await supabaseAdmin
     .from('orders')
-    .update({ payment_status: 'cancelled' })
+    .update({ payment_status: 'refunded' })
     .in('id', orderIds)
 
   if (error) {
