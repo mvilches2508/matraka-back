@@ -63,6 +63,10 @@ router.post('/validate', requireAuth, async (req: AuthRequest, res: Response) =>
     return
   }
 
+  // Normalizar QR: lectores USB HID en teclado ES envían "'" en lugar de "-"
+  // por mismatch de scan codes entre US y ES layout. Reemplazar antes de buscar.
+  const normalizedQr = qr_code.toUpperCase().trim().replace(/'/g, '-')
+
   // Buscar el attendee por QR, incluyendo estado de la orden
   const { data: attendee, error } = await supabaseAdmin
     .from('attendees')
@@ -72,7 +76,7 @@ router.post('/validate', requireAuth, async (req: AuthRequest, res: Response) =>
       ticket_types(name, price),
       orders(id, payment_status)
     `)
-    .eq('qr_code', qr_code.toUpperCase().trim())
+    .eq('qr_code', normalizedQr)
     .single()
 
   if (error || !attendee) {
