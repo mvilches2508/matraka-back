@@ -29,8 +29,8 @@ const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://localhost:3000')
   .split(',')
   .map(o => o.trim())
 
-app.use(cors({
-  origin: (origin, callback) => {
+const corsOptions = {
+  origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
     if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true)
     } else {
@@ -38,7 +38,11 @@ app.use(cors({
     }
   },
   credentials: true,
-}))
+}
+
+// Manejar preflight OPTIONS para TODAS las rutas
+app.options('*', cors(corsOptions))
+app.use(cors(corsOptions))
 
 // Rate limiting global
 const limiter = rateLimit({

@@ -39,7 +39,7 @@ async function shopifyApi(path: string, method: string, body?: object) {
  * POST /api/checkout/custom-price
  * Body: { variantId: number, amount: number, note?: string }
  */
-router.post('/', async (req: Request, res: Response) => {
+router.post('/custom-price', async (req: Request, res: Response) => {
   try {
     const { variantId, amount, note } = req.body
 
@@ -59,7 +59,7 @@ router.post('/', async (req: Request, res: Response) => {
     }
 
     // Crear Draft Order con precio personalizado
-    const data = await shopifyApi('draft_orders.json', 'POST', {
+    const data: any = await shopifyApi('draft_orders.json', 'POST', {
       draft_order: {
         line_items: [
           {
