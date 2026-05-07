@@ -6,14 +6,12 @@ const resend = new Resend(process.env.RESEND_API_KEY)
 const FROM_EMAIL = process.env.EMAIL_FROM || 'tickets@matraka-tickets.com'
 const APP_NAME   = 'Matraka Tickets'
 
-// ── Generar QR como data URL (PNG base64 inline) ───────────────────
-async function generateQRDataUrl(text: string): Promise<string> {
-  return QRCode.toDataURL(text, {
-    width: 300,
-    margin: 2,
-    color: { dark: '#0A0A0A', light: '#FFFFFF' },
-    errorCorrectionLevel: 'H',
-  })
+// ── Generar URL pública del QR (compatible con todos los clientes de email) ──
+// Gmail y otros clientes bloquean base64 inline. Se usa api.qrserver.com
+// que genera PNG accesible por URL, sin dependencias adicionales.
+function generateQRDataUrl(text: string): string {
+  const encoded = encodeURIComponent(text)
+  return `https://api.qrserver.com/v1/create-qr-code/?size=300x300&margin=10&data=${encoded}`
 }
 
 // ── Template HTML del ticket ───────────────────────────────────────
@@ -178,9 +176,8 @@ export async function sendTicketEmail(params: TicketEmailParams): Promise<void> 
   const { buyerEmail, buyerName, eventName, eventDate, venue, city, tickets } = params
 
   // Generar HTML de cada ticket
-  const ticketHtmlBlocks = await Promise.all(
-    tickets.map(async (t, i) => {
-      const qrDataUrl = await generateQRDataUrl(t.qrCode)
+  const ticketHtmlBlocks = tickets.map((t, i) => {
+      const qrDataUrl = generateQRDataUrl(t.qrCode)
       return buildTicketHTML({
         attendeeName:   t.attendeeName,
         ticketTypeName: t.ticketTypeName,
@@ -194,7 +191,6 @@ export async function sendTicketEmail(params: TicketEmailParams): Promise<void> 
         totalInOrder: tickets.length,
       })
     })
-  )
 
   // Email contenedor (un HTML por ticket separado por espaciado)
   const fullHtml = `
