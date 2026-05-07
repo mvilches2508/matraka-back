@@ -205,13 +205,12 @@ router.get('/:eventId/stats', requireAuth, async (req: AuthRequest, res: Respons
 
 // POST /api/attendees/:attendeeId/resend — Reenviar email con QR al asistente
 router.post('/:attendeeId/resend', requireAuth, async (req: AuthRequest, res: Response) => {
+  const isAdmin = req.user!.email === ADMIN_EMAIL
+
+  // 1. Buscar el asistente con su event_id
   const { data: attendee } = await supabaseAdmin
     .from('attendees')
-    .select(`
-      id, attendee_name, attendee_email, qr_code,
-      ticket_types(name),
-      events!inner(id, name, event_date, venue, address, city, producer_id)
-    `)
+    .select('id, attendee_name, attendee_email, qr_code, event_id, ticket_types(name)')
     .eq('id', req.params.attendeeId)
     .single()
 
@@ -220,13 +219,19 @@ router.post('/:attendeeId/resend', requireAuth, async (req: AuthRequest, res: Re
     return
   }
 
-  const event = (attendee as any).events as {
-    id: string; name: string; event_date: string
-    venue: string; address?: string; city: string; producer_id: string
+  // 2. Verificar propiedad del evento (igual que las otras rutas)
+  let eventQuery = supabaseAdmin
+    .from('events')
+    .select('id, name, event_date, venue, address, city, producer_id')
+    .eq('id', (attendee as any).event_id)
+
+  if (!isAdmin) {
+    eventQuery = eventQuery.eq('producer_id', req.user!.id)
   }
 
-  // Verificar que el evento pertenece al productor autenticado
-  if (event.producer_id !== req.user!.id) {
+  const { data: event } = await eventQuery.single()
+
+  if (!event) {
     res.status(403).json({ error: 'Sin permiso para este asistente' })
     return
   }
@@ -238,7 +243,7 @@ router.post('/:attendeeId/resend', requireAuth, async (req: AuthRequest, res: Re
       eventName:   event.name,
       eventDate:   event.event_date,
       venue:       event.venue,
-      address:     event.address,
+      address:     (event as any).address,
       city:        event.city,
       tickets: [{
         attendeeName:   attendee.attendee_name,
