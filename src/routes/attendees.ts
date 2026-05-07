@@ -63,13 +63,14 @@ router.post('/validate', requireAuth, async (req: AuthRequest, res: Response) =>
     return
   }
 
-  // Buscar el attendee por QR
+  // Buscar el attendee por QR, incluyendo estado de la orden
   const { data: attendee, error } = await supabaseAdmin
     .from('attendees')
     .select(`
       *,
       events!inner(id, name, event_date, venue, producer_id),
-      ticket_types(name, price)
+      ticket_types(name, price),
+      orders(id, payment_status)
     `)
     .eq('qr_code', qr_code.toUpperCase().trim())
     .single()
@@ -88,6 +89,22 @@ router.post('/validate', requireAuth, async (req: AuthRequest, res: Response) =>
     res.status(403).json({
       valid: false,
       error: 'No tienes permiso para validar entradas de este evento',
+    })
+    return
+  }
+
+  // Verificar si la orden fue cancelada
+  const orderData = (attendee as any).orders as { id: string; payment_status: string } | null
+  if (orderData?.payment_status === 'cancelled') {
+    res.json({
+      valid: false,
+      cancelled: true,
+      error: 'Esta entrada fue cancelada y no es válida.',
+      attendee: {
+        name: attendee.attendee_name,
+        email: attendee.attendee_email,
+        ticket_type: (attendee.ticket_types as { name: string } | null)?.name,
+      },
     })
     return
   }

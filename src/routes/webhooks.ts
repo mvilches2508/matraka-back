@@ -285,4 +285,78 @@ async function processShopifyOrder(order: ShopifyOrder): Promise<void> {
   console.log(`[webhook] ✅ Orden ${shopifyOrderId} procesada: ${attendees.length} entrada(s) → ${order.email}`)
 }
 
+// ── POST /shopify/orders-cancelled ────────────────────────────────
+/**
+ * Shopify dispara este evento cuando se cancela una orden.
+ * Flujo:
+ *   1. Verificar HMAC (igual que orders-paid)
+ *   2. Buscar en shopify_webhook_log las órdenes internas asociadas
+ *   3. Marcar orders.payment_status = 'cancelled'
+ *
+ * El validador de QR (attendees.ts) rechaza entradas cuya orden esté cancelada.
+ */
+router.post(
+  '/shopify/orders-cancelled',
+  express_raw_middleware,
+  async (req: Request, res: Response) => {
+    const hmacHeader = req.headers['x-shopify-hmac-sha256'] as string
+    const rawBody: Buffer = (req as any).rawBody
+
+    if (hmacHeader && !verifyShopifyHmac(rawBody, hmacHeader)) {
+      console.warn('[webhook:cancel] HMAC inválido — rechazando')
+      res.status(401).json({ error: 'Unauthorized' })
+      return
+    }
+
+    const payload = JSON.parse(rawBody.toString()) as { id: number }
+    const shopifyOrderId = String(payload.id)
+
+    try {
+      await cancelShopifyOrder(shopifyOrderId)
+    } catch (err) {
+      console.error('[webhook:cancel] Error procesando cancelación:', err)
+      // Devolvemos 200 igual para que Shopify no reintente infinitamente
+    }
+
+    res.status(200).json({ received: true })
+  }
+)
+
+async function cancelShopifyOrder(shopifyOrderId: string): Promise<void> {
+  console.log(`[webhook:cancel] Procesando cancelación orden Shopify ${shopifyOrderId}`)
+
+  // Buscar las órdenes internas asociadas a este shopify_order_id
+  const { data: logEntry } = await supabaseAdmin
+    .from('shopify_webhook_log')
+    .select('order_ids')
+    .eq('shopify_order_id', shopifyOrderId)
+    .single()
+
+  if (!logEntry || !logEntry.order_ids) {
+    console.warn(`[webhook:cancel] shopify_order_id ${shopifyOrderId} no encontrado en log — puede ser una orden anterior al sistema`)
+    return
+  }
+
+  const orderIds: string[] = Array.isArray(logEntry.order_ids)
+    ? logEntry.order_ids
+    : [logEntry.order_ids]
+
+  if (orderIds.length === 0) {
+    console.warn(`[webhook:cancel] order_ids vacío para ${shopifyOrderId}`)
+    return
+  }
+
+  const { error } = await supabaseAdmin
+    .from('orders')
+    .update({ payment_status: 'cancelled' })
+    .in('id', orderIds)
+
+  if (error) {
+    console.error('[webhook:cancel] Error actualizando órdenes:', error)
+    throw error
+  }
+
+  console.log(`[webhook:cancel] ✅ ${orderIds.length} orden(es) marcada(s) como canceladas para shopify_order_id ${shopifyOrderId}`)
+}
+
 export default router
