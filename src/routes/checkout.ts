@@ -59,20 +59,30 @@ router.post('/custom-price', async (req: Request, res: Response) => {
     }
 
     // Crear Draft Order con precio personalizado
-    const data: any = await shopifyApi('draft_orders.json', 'POST', {
+    // NOTA: CLP es zero-decimal → precio como string sin decimales (ej: "5000")
+    // No incluir applied_discount: null porque Shopify ignoraría el price override
+    const payload = {
       draft_order: {
         line_items: [
           {
             variant_id: variantId,
             quantity: 1,
-            price: parsedAmount.toFixed(2),  // Shopify requiere string con decimales
-            applied_discount: null,           // Sin descuento sobre el precio custom
+            price: String(Math.round(parsedAmount)),  // "5000" para CLP
           },
         ],
         note: note || 'Aporte personal — precio libre',
         use_customer_default_address: false,
       },
-    })
+    }
+
+    console.log('[checkout] Enviando a Shopify:', JSON.stringify(payload))
+
+    const data: any = await shopifyApi('draft_orders.json', 'POST', payload)
+
+    console.log('[checkout] Respuesta Shopify — precio en draft order:',
+      data?.draft_order?.line_items?.[0]?.price,
+      '| total:', data?.draft_order?.total_price,
+    )
 
     const invoiceUrl: string = data?.draft_order?.invoice_url
     if (!invoiceUrl) {
