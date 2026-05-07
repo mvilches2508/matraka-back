@@ -346,17 +346,44 @@ async function cancelShopifyOrder(shopifyOrderId: string): Promise<void> {
     return
   }
 
-  const { error } = await supabaseAdmin
+  // Leer quantity y ticket_type_id antes de marcar como refunded
+  const { data: ordersData, error: fetchError } = await supabaseAdmin
+    .from('orders')
+    .select('id, ticket_type_id, quantity')
+    .in('id', orderIds)
+
+  if (fetchError || !ordersData) {
+    console.error('[webhook:cancel] Error leyendo órdenes:', fetchError)
+    throw fetchError
+  }
+
+  // Marcar órdenes como refunded
+  const { error: updateError } = await supabaseAdmin
     .from('orders')
     .update({ payment_status: 'refunded' })
     .in('id', orderIds)
 
-  if (error) {
-    console.error('[webhook:cancel] Error actualizando órdenes:', error)
-    throw error
+  if (updateError) {
+    console.error('[webhook:cancel] Error actualizando órdenes:', updateError)
+    throw updateError
   }
 
-  console.log(`[webhook:cancel] ✅ ${orderIds.length} orden(es) marcada(s) como canceladas para shopify_order_id ${shopifyOrderId}`)
+  // Decrementar sold en ticket_types por cada orden cancelada
+  for (const order of ordersData) {
+    const { error: soldError } = await supabaseAdmin
+      .rpc('decrement_ticket_sold', {
+        p_ticket_type_id: order.ticket_type_id,
+        p_quantity:       order.quantity,
+      })
+
+    if (soldError) {
+      // No relanzar — las órdenes ya están marcadas como refunded,
+      // el sold es recuperable manualmente si falla
+      console.error(`[webhook:cancel] Error decrementando sold para ticket_type ${order.ticket_type_id}:`, soldError)
+    }
+  }
+
+  console.log(`[webhook:cancel] ✅ ${orderIds.length} orden(es) cancelada(s), sold decrementado en ticket_types`)
 }
 
 export default router
