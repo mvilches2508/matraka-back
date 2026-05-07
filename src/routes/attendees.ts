@@ -1,6 +1,7 @@
 import { Router, Response } from 'express'
 import { supabaseAdmin } from '../lib/supabase'
 import { requireAuth, AuthRequest } from '../middleware/auth'
+import { sendTicketEmail } from '../lib/email'
 
 const router = Router()
 
@@ -88,7 +89,7 @@ router.post('/validate', requireAuth, async (req: AuthRequest, res: Response) =>
   }
 
   // Verificar que el evento pertenece al productor
-  const eventData = attendee.events as { producer_id: string; name: string; event_date: string; venue: string }
+  const eventData = (attendee as any).events as { producer_id: string; name: string; event_date: string; venue: string }
   if (eventData.producer_id !== req.user!.id) {
     res.status(403).json({
       valid: false,
@@ -186,6 +187,58 @@ router.get('/:eventId/stats', requireAuth, async (req: AuthRequest, res: Respons
     pending: total - checked_in,
     occupancy_pct: total > 0 ? Math.round((checked_in / total) * 100) : 0,
   })
+})
+
+// POST /api/attendees/:attendeeId/resend — Reenviar email con QR al asistente
+router.post('/:attendeeId/resend', requireAuth, async (req: AuthRequest, res: Response) => {
+  const { data: attendee } = await supabaseAdmin
+    .from('attendees')
+    .select(`
+      id, attendee_name, attendee_email, qr_code,
+      ticket_types(name),
+      events!inner(id, name, event_date, venue, address, city, producer_id)
+    `)
+    .eq('id', req.params.attendeeId)
+    .single()
+
+  if (!attendee) {
+    res.status(404).json({ error: 'Asistente no encontrado' })
+    return
+  }
+
+  const event = (attendee as any).events as {
+    id: string; name: string; event_date: string
+    venue: string; address?: string; city: string; producer_id: string
+  }
+
+  // Verificar que el evento pertenece al productor autenticado
+  if (event.producer_id !== req.user!.id) {
+    res.status(403).json({ error: 'Sin permiso para este asistente' })
+    return
+  }
+
+  try {
+    await sendTicketEmail({
+      buyerEmail:  attendee.attendee_email,
+      buyerName:   attendee.attendee_name,
+      eventName:   event.name,
+      eventDate:   event.event_date,
+      venue:       event.venue,
+      address:     event.address,
+      city:        event.city,
+      tickets: [{
+        attendeeName:   attendee.attendee_name,
+        ticketTypeName: ((attendee as any).ticket_types as { name: string } | null)?.name || 'General',
+        qrCode:         attendee.qr_code,
+      }],
+    })
+  } catch (err) {
+    console.error('[resend] Error enviando email:', err)
+    res.status(500).json({ error: 'Error al reenviar el email' })
+    return
+  }
+
+  res.json({ ok: true, message: `Email reenviado a ${attendee.attendee_email}` })
 })
 
 export default router

@@ -162,7 +162,7 @@ async function processShopifyOrder(order: ShopifyOrder): Promise<void> {
       .from('ticket_types')
       .select(`
         id, event_id, name, price,
-        events!inner(id, name, event_date, venue, city, cover_image_url, producer_id, commission_pct)
+        events!inner(id, name, event_date, venue, address, city, cover_image_url, producer_id, commission_pct)
       `)
       .eq('shopify_variant_id', variantGid)
       .eq('is_active', true)
@@ -176,7 +176,7 @@ async function processShopifyOrder(order: ShopifyOrder): Promise<void> {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const event = (ticketType as any).events as {
       id: string; name: string; event_date: string
-      venue: string; city: string; cover_image_url: string; producer_id: string; commission_pct: number
+      venue: string; address?: string; city: string; cover_image_url: string; producer_id: string; commission_pct: number
     }
 
     const unitPrice   = parseFloat(item.price)
@@ -238,7 +238,7 @@ async function processShopifyOrder(order: ShopifyOrder): Promise<void> {
     .select(`
       attendee_name, attendee_email, qr_code,
       ticket_types(name),
-      events!inner(name, event_date, venue, city)
+      events!inner(name, event_date, venue, address, city)
     `)
     .in('order_id', createdOrderIds)
     .order('created_at', { ascending: true })
@@ -252,7 +252,7 @@ async function processShopifyOrder(order: ShopifyOrder): Promise<void> {
   // Agrupar por evento (en caso de que una orden tenga varios eventos)
   const firstAttendee = attendees[0]
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const eventData = (firstAttendee as any).events as { name: string; event_date: string; venue: string; city: string }
+  const eventData = (firstAttendee as any).events as { name: string; event_date: string; venue: string; address?: string; city: string }
 
   try {
     await sendTicketEmail({
@@ -261,6 +261,7 @@ async function processShopifyOrder(order: ShopifyOrder): Promise<void> {
       eventName:  eventData.name,
       eventDate:  eventData.event_date,
       venue:      eventData.venue,
+      address:    eventData.address,
       city:       eventData.city,
       tickets: attendees.map(a => ({
         attendeeName:   a.attendee_name,

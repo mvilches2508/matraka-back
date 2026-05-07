@@ -21,6 +21,7 @@ function buildTicketHTML(params: {
   eventName: string
   eventDate: string
   venue: string
+  address?: string
   city: string
   qrCode: string
   qrDataUrl: string
@@ -29,7 +30,7 @@ function buildTicketHTML(params: {
 }): string {
   const {
     attendeeName, ticketTypeName, eventName,
-    eventDate, venue, city,
+    eventDate, venue, address, city,
     qrCode, qrDataUrl, orderIndex, totalInOrder,
   } = params
 
@@ -102,7 +103,7 @@ function buildTicketHTML(params: {
                     <p style="margin:0 0 16px 0;font-size:13px;color:#888;">${timeFormatted} hrs</p>
 
                     <p style="margin:0 0 4px 0;font-size:11px;letter-spacing:2px;color:#666;text-transform:uppercase;font-weight:600;">Lugar</p>
-                    <p style="margin:0 0 2px 0;font-size:14px;color:#F0EDE8;font-weight:600;">${venue}</p>
+                    <p style="margin:0 0 2px 0;font-size:14px;color:#F0EDE8;font-weight:600;">${venue}${address ? `, ${address}` : ''}</p>
                     <p style="margin:0;font-size:13px;color:#888;">${city}</p>
 
                     <p style="margin:20px 0 4px 0;font-size:11px;letter-spacing:2px;color:#666;text-transform:uppercase;font-weight:600;">Titular</p>
@@ -163,6 +164,7 @@ export interface TicketEmailParams {
   eventName: string
   eventDate: string
   venue: string
+  address?: string
   city: string
   tickets: Array<{
     attendeeName: string
@@ -173,7 +175,7 @@ export interface TicketEmailParams {
 
 // ── Función principal: enviar email con todos los tickets de la orden ──
 export async function sendTicketEmail(params: TicketEmailParams): Promise<void> {
-  const { buyerEmail, buyerName, eventName, eventDate, venue, city, tickets } = params
+  const { buyerEmail, buyerName, eventName, eventDate, venue, address, city, tickets } = params
 
   // Generar HTML de cada ticket
   const ticketHtmlBlocks = tickets.map((t, i) => {
@@ -184,6 +186,7 @@ export async function sendTicketEmail(params: TicketEmailParams): Promise<void> 
         eventName,
         eventDate,
         venue,
+        address,
         city,
         qrCode:    t.qrCode,
         qrDataUrl,
