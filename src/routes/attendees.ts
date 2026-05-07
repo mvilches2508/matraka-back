@@ -3,17 +3,25 @@ import { supabaseAdmin } from '../lib/supabase'
 import { requireAuth, AuthRequest } from '../middleware/auth'
 import { sendTicketEmail } from '../lib/email'
 
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'hola@matraka-tickets.com'
+
 const router = Router()
 
 // GET /api/attendees/:eventId — Lista de asistentes de un evento
 router.get('/:eventId', requireAuth, async (req: AuthRequest, res: Response) => {
-  // Verificar propiedad
-  const { data: event } = await supabaseAdmin
+  const isAdmin = req.user!.email === ADMIN_EMAIL
+
+  // Verificar propiedad (admin puede ver cualquier evento)
+  let eventQuery = supabaseAdmin
     .from('events')
     .select('id, name')
     .eq('id', req.params.eventId)
-    .eq('producer_id', req.user!.id)
-    .single()
+
+  if (!isAdmin) {
+    eventQuery = eventQuery.eq('producer_id', req.user!.id)
+  }
+
+  const { data: event } = await eventQuery.single()
 
   if (!event) {
     res.status(404).json({ error: 'Evento no encontrado' })
@@ -161,12 +169,18 @@ router.post('/validate', requireAuth, async (req: AuthRequest, res: Response) =>
 
 // GET /api/attendees/:eventId/stats — Stats de check-in en tiempo real
 router.get('/:eventId/stats', requireAuth, async (req: AuthRequest, res: Response) => {
-  const { data: event } = await supabaseAdmin
+  const isAdmin = req.user!.email === ADMIN_EMAIL
+
+  let statsEventQuery = supabaseAdmin
     .from('events')
     .select('id, name, capacity')
     .eq('id', req.params.eventId)
-    .eq('producer_id', req.user!.id)
-    .single()
+
+  if (!isAdmin) {
+    statsEventQuery = statsEventQuery.eq('producer_id', req.user!.id)
+  }
+
+  const { data: event } = await statsEventQuery.single()
 
   if (!event) {
     res.status(404).json({ error: 'Evento no encontrado' })
