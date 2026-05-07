@@ -165,7 +165,7 @@ router.get('/:id', requireAuth, async (req: AuthRequest, res: Response) => {
     .order('created_at', { ascending: false })
 
   const orders = orderStats || []
-  const stats = {
+  const order_stats = {
     total_ventas: orders.length,
     total_entradas: orders.reduce((s, o) => s + o.quantity, 0),
     total_revenue: orders.reduce((s, o) => s + Number(o.subtotal), 0),
@@ -173,7 +173,19 @@ router.get('/:id', requireAuth, async (req: AuthRequest, res: Response) => {
     recientes: orders.slice(0, 10),
   }
 
-  res.json({ ...event, order_stats: stats })
+  // Mismo stats que calcula el list endpoint (ticket_types.sold)
+  const tickets = event.ticket_types || []
+  const stats = {
+    total_capacity:   tickets.reduce((s: number, t: { quantity: number }) => s + t.quantity, 0),
+    total_sold:       tickets.reduce((s: number, t: { sold: number }) => s + t.sold, 0),
+    total_revenue:    tickets.reduce((s: number, t: { sold: number; price: number }) => s + t.sold * t.price, 0),
+    producer_revenue: tickets.reduce((s: number, t: { sold: number; price: number }) => s + t.sold * t.price, 0) * (1 - event.commission_pct / 100),
+    occupancy_pct:    tickets.length > 0 && tickets.reduce((s: number, t: { quantity: number }) => s + t.quantity, 0) > 0
+      ? Math.round((tickets.reduce((s: number, t: { sold: number }) => s + t.sold, 0) / tickets.reduce((s: number, t: { quantity: number }) => s + t.quantity, 0)) * 100)
+      : 0,
+  }
+
+  res.json({ ...event, stats, order_stats })
 })
 
 // ── POST /api/events — Crear evento ──────────────────────────────
