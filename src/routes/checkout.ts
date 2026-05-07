@@ -58,6 +58,15 @@ router.post('/custom-price', async (req: Request, res: Response) => {
       return res.status(500).json({ error: 'Shopify no configurado' })
     }
 
+    // Verificar disponibilidad del variant antes de crear el Draft Order
+    const variantData: any = await shopifyApi(`variants/${variantId}.json`, 'GET')
+    const inventoryQty: number = variantData?.variant?.inventory_quantity ?? 0
+    const inventoryPolicy: string = variantData?.variant?.inventory_policy ?? 'deny'
+
+    if (inventoryPolicy === 'deny' && inventoryQty <= 0) {
+      return res.status(409).json({ error: 'Las entradas para este evento están agotadas.' })
+    }
+
     // Crear Draft Order con precio personalizado.
     // Shopify ignora `price` cuando el line item tiene `variant_id` (el precio
     // del variant siempre gana). Solución: custom line item sin variant_id,
