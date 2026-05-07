@@ -162,7 +162,7 @@ async function processShopifyOrder(order: ShopifyOrder): Promise<void> {
       .from('ticket_types')
       .select(`
         id, event_id, name, price,
-        events!inner(id, name, event_date, venue, city, cover_image_url, producer_id)
+        events!inner(id, name, event_date, venue, city, cover_image_url, producer_id, commission_pct)
       `)
       .eq('shopify_variant_id', variantGid)
       .eq('is_active', true)
@@ -176,13 +176,13 @@ async function processShopifyOrder(order: ShopifyOrder): Promise<void> {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const event = (ticketType as any).events as {
       id: string; name: string; event_date: string
-      venue: string; city: string; cover_image_url: string; producer_id: string
+      venue: string; city: string; cover_image_url: string; producer_id: string; commission_pct: number
     }
 
     const unitPrice   = parseFloat(item.price)
     const quantity    = item.quantity
     const subtotal    = unitPrice * quantity
-    const commissionPct = 5 // default; idealmente leer de events.commission_pct
+    const commissionPct = event.commission_pct ?? 5
     const platformFee   = subtotal * (commissionPct / 100)
     const producerAmt   = subtotal - platformFee
 
