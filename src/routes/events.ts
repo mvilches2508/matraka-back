@@ -56,9 +56,10 @@ const eventSchema = z.object({
   tags: z.array(z.string()).max(10).default([]),
 })
 
-// ── GET /api/events — Listar eventos del productor ─────────────────
+// ── GET /api/events — Listar eventos del productor (o todos si es admin) ──
 router.get('/', requireAuth, async (req: AuthRequest, res: Response) => {
   const { status, limit = '20', offset = '0' } = req.query
+  const isAdmin = req.user!.email === ADMIN_EMAIL
 
   let query = supabaseAdmin
     .from('events')
@@ -66,9 +67,13 @@ router.get('/', requireAuth, async (req: AuthRequest, res: Response) => {
       *,
       ticket_types(id, name, price, quantity, sold, is_active)
     `)
-    .eq('producer_id', req.user!.id)
     .order('event_date', { ascending: false })
     .range(Number(offset), Number(offset) + Number(limit) - 1)
+
+  // El admin ve todos los eventos; el productor solo los suyos
+  if (!isAdmin) {
+    query = query.eq('producer_id', req.user!.id)
+  }
 
   if (status) {
     query = query.eq('status', status)
@@ -133,15 +138,18 @@ router.get('/admin/pending', requireAuth, async (req: AuthRequest, res: Response
 
 // ── GET /api/events/:id — Detalle de un evento ────────────────────
 router.get('/:id', requireAuth, async (req: AuthRequest, res: Response) => {
-  const { data: event, error } = await supabaseAdmin
+  const isAdmin = req.user!.email === ADMIN_EMAIL
+
+  let detailQuery = supabaseAdmin
     .from('events')
-    .select(`
-      *,
-      ticket_types(*)
-    `)
+    .select('*, ticket_types(*)')
     .eq('id', req.params.id)
-    .eq('producer_id', req.user!.id)
-    .single()
+
+  if (!isAdmin) {
+    detailQuery = detailQuery.eq('producer_id', req.user!.id)
+  }
+
+  const { data: event, error } = await detailQuery.single()
 
   if (error || !event) {
     res.status(404).json({ error: 'Evento no encontrado' })
