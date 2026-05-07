@@ -41,10 +41,11 @@ function verifyShopifyHmac(rawBody: Buffer, hmacHeader: string): boolean {
 // ── Tipos Shopify ──────────────────────────────────────────────────
 interface ShopifyLineItem {
   id: number
-  variant_id: number
+  variant_id: number | null
   title: string
   quantity: number
   price: string
+  properties?: Array<{ name: string; value: string }>
 }
 
 interface ShopifyAddress {
@@ -143,10 +144,18 @@ async function processShopifyOrder(order: ShopifyOrder): Promise<void> {
 
   // 3. Procesar cada line_item
   for (const item of order.line_items) {
-    // Ignorar items sin variant_id
-    if (!item.variant_id) continue
+    // Resolver variant_id: directo en el item (compra normal)
+    // o desde properties._variant_id (Draft Order de precio libre)
+    let resolvedVariantId: string | null = null
+    if (item.variant_id != null) {
+      resolvedVariantId = String(item.variant_id)
+    } else {
+      resolvedVariantId = item.properties?.find(p => p.name === '_variant_id')?.value ?? null
+    }
 
-    const variantGid = `gid://shopify/ProductVariant/${item.variant_id}`
+    if (!resolvedVariantId) continue
+
+    const variantGid = `gid://shopify/ProductVariant/${resolvedVariantId}`
 
     // 3a. Buscar ticket_type por shopify_variant_id
     const { data: ticketType } = await supabaseAdmin
@@ -164,7 +173,8 @@ async function processShopifyOrder(order: ShopifyOrder): Promise<void> {
       continue
     }
 
-    const event = ticketType.events as {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const event = (ticketType as any).events as {
       id: string; name: string; event_date: string
       venue: string; city: string; cover_image_url: string; producer_id: string
     }
@@ -241,7 +251,8 @@ async function processShopifyOrder(order: ShopifyOrder): Promise<void> {
   // 5. Enviar email con QR(s) al comprador
   // Agrupar por evento (en caso de que una orden tenga varios eventos)
   const firstAttendee = attendees[0]
-  const eventData = firstAttendee.events as { name: string; event_date: string; venue: string; city: string }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const eventData = (firstAttendee as any).events as { name: string; event_date: string; venue: string; city: string }
 
   try {
     await sendTicketEmail({
@@ -253,7 +264,7 @@ async function processShopifyOrder(order: ShopifyOrder): Promise<void> {
       city:       eventData.city,
       tickets: attendees.map(a => ({
         attendeeName:   a.attendee_name,
-        ticketTypeName: (a.ticket_types as { name: string } | null)?.name || 'General',
+        ticketTypeName: ((a as any).ticket_types as { name: string } | null)?.name || 'General',
         qrCode:         a.qr_code,
       })),
     })

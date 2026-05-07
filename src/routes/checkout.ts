@@ -58,16 +58,21 @@ router.post('/custom-price', async (req: Request, res: Response) => {
       return res.status(500).json({ error: 'Shopify no configurado' })
     }
 
-    // Crear Draft Order con precio personalizado
-    // NOTA: CLP es zero-decimal → precio como string sin decimales (ej: "5000")
-    // No incluir applied_discount: null porque Shopify ignoraría el price override
+    // Crear Draft Order con precio personalizado.
+    // Shopify ignora `price` cuando el line item tiene `variant_id` (el precio
+    // del variant siempre gana). Solución: custom line item sin variant_id,
+    // guardando el variant como property para que el webhook pueda procesarlo.
     const payload = {
       draft_order: {
         line_items: [
           {
-            variant_id: variantId,
+            title: 'Entrada — Aporte Personal',
+            price: String(Math.round(parsedAmount)),  // CLP zero-decimal, sin ".00"
             quantity: 1,
-            price: String(Math.round(parsedAmount)),  // "5000" para CLP
+            taxable: false,
+            properties: [
+              { name: '_variant_id', value: String(variantId) },
+            ],
           },
         ],
         note: note || 'Aporte personal — precio libre',
