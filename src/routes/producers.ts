@@ -63,48 +63,52 @@ router.patch('/me', requireAuth, async (req: AuthRequest, res: Response) => {
 router.get('/me/analytics', requireAuth, async (req: AuthRequest, res: Response) => {
   const producerId = req.user!.id
 
-  // Ejecutar consultas en paralelo
-  const [eventsRes, revenueRes, attendeesRes, recentOrdersRes] = await Promise.all([
-    // Conteo de eventos por status
-    supabaseAdmin
-      .from('events')
-      .select('status')
-      .eq('producer_id', producerId),
+  // 1. Obtener eventos del productor (fuente de verdad para filtrar el resto)
+  const { data: eventsData } = await supabaseAdmin
+    .from('events')
+    .select('id, status')
+    .eq('producer_id', producerId)
 
-    // Revenue total por evento
+  const events = eventsData || []
+  const eventIds = events.map(e => e.id)
+
+  // Si no tiene eventos, devolver zeros sin más queries
+  if (eventIds.length === 0) {
+    res.json({
+      eventos: { total: 0, activos: 0, en_revision: 0, borradores: 0, terminados: 0 },
+      revenue: { total_recaudado: 0, total_productor: 0, total_comision: 0, entradas_vendidas: 0 },
+      asistentes: { total: 0, checked_in: 0 },
+      recientes: [],
+    })
+    return
+  }
+
+  // 2. Consultas paralelas filtrando por event_id (evita el bug de dot-notation)
+  const [revenueRes, attendeesRes, recentOrdersRes] = await Promise.all([
     supabaseAdmin
       .from('orders')
-      .select(`
-        subtotal, producer_amount, platform_fee, quantity,
-        events!inner(producer_id)
-      `)
-      .eq('events.producer_id', producerId)
+      .select('subtotal, producer_amount, platform_fee, quantity')
+      .in('event_id', eventIds)
       .eq('payment_status', 'paid'),
 
-    // Asistentes con check-in
     supabaseAdmin
       .from('attendees')
-      .select(`
-        checked_in,
-        events!inner(producer_id)
-      `)
-      .eq('events.producer_id', producerId),
+      .select('checked_in')
+      .in('event_id', eventIds),
 
-    // Últimas 5 órdenes
     supabaseAdmin
       .from('orders')
       .select(`
         id, buyer_name, buyer_email, quantity, subtotal, payment_status, created_at,
-        events!inner(name, producer_id),
+        events(name),
         ticket_types(name)
       `)
-      .eq('events.producer_id', producerId)
+      .in('event_id', eventIds)
       .eq('payment_status', 'paid')
       .order('created_at', { ascending: false })
       .limit(5),
   ])
 
-  const events = eventsRes.data || []
   const orders = revenueRes.data || []
   const attendees = attendeesRes.data || []
   const recentOrders = recentOrdersRes.data || []
