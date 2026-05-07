@@ -11,6 +11,7 @@ import ticketsRouter from './routes/tickets'
 import ordersRouter from './routes/orders'
 import attendeesRouter from './routes/attendees'
 import payoutsRouter from './routes/payouts'
+import checkoutRouter from './routes/checkout'
 import webhooksRouter from './routes/webhooks'
 
 const app = express()
@@ -135,6 +136,7 @@ app.use('/api/events', ticketsRouter)        // /api/events/:eventId/tickets
 app.use('/api/orders', ordersRouter)
 app.use('/api/attendees', qrLimiter, attendeesRouter)
 app.use('/api/payouts', payoutsRouter)
+app.use('/api/checkout', checkoutRouter)
 // /api/webhooks ya está montado arriba (antes del json middleware)
 
 // ── 404 handler ────────────────────────────────────────────────────
