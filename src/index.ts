@@ -13,6 +13,7 @@ import attendeesRouter from './routes/attendees'
 import payoutsRouter from './routes/payouts'
 import checkoutRouter from './routes/checkout'
 import webhooksRouter from './routes/webhooks'
+import adminRouter from './routes/admin'
 
 const app = express()
 const PORT = process.env.PORT || 3001
@@ -141,6 +142,7 @@ app.use('/api/orders', ordersRouter)
 app.use('/api/attendees', qrLimiter, attendeesRouter)
 app.use('/api/payouts', payoutsRouter)
 app.use('/api/checkout', checkoutRouter)
+app.use('/api/admin', adminRouter)
 // /api/webhooks ya está montado arriba (antes del json middleware)
 
 // ── 404 handler ────────────────────────────────────────────────────
