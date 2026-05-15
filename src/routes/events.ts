@@ -551,7 +551,7 @@ router.post('/:id/courtesy', requireAuth, async (req: AuthRequest, res: Response
         event_id:   req.params.id,
         name:       'Cortesías',
         price:      0,
-        quantity:   0,
+        quantity:   1,
         sold:       0,
         is_active:  true,
         sort_order: 99,
