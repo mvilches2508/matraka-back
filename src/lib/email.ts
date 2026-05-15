@@ -36,9 +36,11 @@ function buildTicketHTML(params: {
 
   const dateFormatted = new Date(eventDate).toLocaleDateString('es-CL', {
     weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+    timeZone: 'America/Santiago',
   })
   const timeFormatted = new Date(eventDate).toLocaleTimeString('es-CL', {
     hour: '2-digit', minute: '2-digit',
+    timeZone: 'America/Santiago',
   })
 
   const ticketLabel = totalInOrder > 1
@@ -239,9 +241,11 @@ export async function sendAdminReviewEmail(params: {
 
   const dateFormatted = new Date(eventDate).toLocaleDateString('es-CL', {
     weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+    timeZone: 'America/Santiago',
   })
   const timeFormatted = new Date(eventDate).toLocaleTimeString('es-CL', {
     hour: '2-digit', minute: '2-digit',
+    timeZone: 'America/Santiago',
   })
 
   const ticketRows = ticketTypes.map(t =>
