@@ -4,7 +4,7 @@ import QRCode from 'qrcode'
 const resend = new Resend(process.env.RESEND_API_KEY)
 
 const FROM_EMAIL = process.env.EMAIL_FROM || 'tickets@matraka-tickets.com'
-const APP_NAME   = 'Matraka Tickets'
+const APP_NAME = 'Matraka Tickets'
 
 // ── Generar URL pública del QR (compatible con todos los clientes de email) ──
 // Gmail y otros clientes bloquean base64 inline. Se usa api.qrserver.com
@@ -132,7 +132,7 @@ function buildTicketHTML(params: {
                 <tr>
                   <td style="background:#0A0A0A;padding:12px 28px;border-top:1px solid #2A2A2A;">
                     <p style="margin:0;font-size:10px;color:#444;text-align:center;">
-                      Esta entrada es intransferible · Un uso por QR · Matraka Tickets by Inovabiz
+                      Esta entrada es intransferible · Un uso por QR · Matraka Tickets
                     </p>
                   </td>
                 </tr>
@@ -181,21 +181,21 @@ export async function sendTicketEmail(params: TicketEmailParams): Promise<void> 
 
   // Generar HTML de cada ticket
   const ticketHtmlBlocks = tickets.map((t, i) => {
-      const qrDataUrl = generateQRDataUrl(t.qrCode)
-      return buildTicketHTML({
-        attendeeName:   t.attendeeName,
-        ticketTypeName: t.ticketTypeName,
-        eventName,
-        eventDate,
-        venue,
-        address,
-        city,
-        qrCode:    t.qrCode,
-        qrDataUrl,
-        orderIndex:   i + 1,
-        totalInOrder: tickets.length,
-      })
+    const qrDataUrl = generateQRDataUrl(t.qrCode)
+    return buildTicketHTML({
+      attendeeName: t.attendeeName,
+      ticketTypeName: t.ticketTypeName,
+      eventName,
+      eventDate,
+      venue,
+      address,
+      city,
+      qrCode: t.qrCode,
+      qrDataUrl,
+      orderIndex: i + 1,
+      totalInOrder: tickets.length,
     })
+  })
 
   // Email contenedor (un HTML por ticket separado por espaciado)
   const fullHtml = `
@@ -212,7 +212,7 @@ export async function sendTicketEmail(params: TicketEmailParams): Promise<void> 
 
   const { error } = await resend.emails.send({
     from: `${APP_NAME} <${FROM_EMAIL}>`,
-    to:   buyerEmail,
+    to: buyerEmail,
     subject,
     html: fullHtml,
   })

@@ -4,11 +4,11 @@ import { supabaseAdmin } from '../lib/supabase'
 import { requireAuth, AuthRequest } from '../middleware/auth'
 import { Resend } from 'resend'
 
-const router  = Router()
-const resend  = new Resend(process.env.RESEND_API_KEY)
+const router = Router()
+const resend = new Resend(process.env.RESEND_API_KEY)
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'hola@matraka-tickets.com'
-const FROM_EMAIL  = process.env.EMAIL_FROM  || 'tickets@matraka-tickets.com'
-const APP_NAME    = 'Matraka Tickets'
+const FROM_EMAIL = process.env.EMAIL_FROM || 'tickets@matraka-tickets.com'
+const APP_NAME = 'Matraka Tickets'
 
 function requireAdmin(req: AuthRequest, res: Response): boolean {
   if (req.user?.email !== ADMIN_EMAIL) {
@@ -47,8 +47,8 @@ router.get('/events/:id/recipients', requireAuth, async (req: AuthRequest, res: 
 
 // ── POST /api/admin/email-blast — Envío masivo BCC ───────────────
 const blastSchema = z.object({
-  subject:    z.string().min(1).max(200),
-  body:       z.string().min(1),
+  subject: z.string().min(1).max(200),
+  body: z.string().min(1),
   recipients: z.array(z.string().email()).min(1).max(500),
 })
 
@@ -105,7 +105,7 @@ router.post('/email-blast', requireAuth, async (req: AuthRequest, res: Response)
                 <tr>
                   <td style="background:#0A0A0A;padding:12px 28px;border-top:1px solid #2A2A2A;">
                     <p style="margin:0;font-size:10px;color:#444;text-align:center;">
-                      Matraka Tickets by Inovabiz · <a href="mailto:hola@matraka-tickets.com" style="color:#FFE500;text-decoration:none;">hola@matraka-tickets.com</a>
+                      Matraka Tickets <a href="mailto:hola@matraka-tickets.com" style="color:#FFE500;text-decoration:none;">hola@matraka-tickets.com</a>
                     </p>
                   </td>
                 </tr>
@@ -128,9 +128,9 @@ router.post('/email-blast', requireAuth, async (req: AuthRequest, res: Response)
   for (let i = 0; i < uniqueRecipients.length; i += BATCH_SIZE) {
     const batch = uniqueRecipients.slice(i, i + BATCH_SIZE)
     const { error } = await resend.emails.send({
-      from:    `${APP_NAME} <${FROM_EMAIL}>`,
-      to:      ADMIN_EMAIL,          // destinatario visible: el admin
-      bcc:     batch,                // todos los demás en BCC
+      from: `${APP_NAME} <${FROM_EMAIL}>`,
+      to: ADMIN_EMAIL,          // destinatario visible: el admin
+      bcc: batch,                // todos los demás en BCC
       subject,
       html,
     })
@@ -146,11 +146,11 @@ router.post('/email-blast', requireAuth, async (req: AuthRequest, res: Response)
   }
 
   res.json({
-    ok:         errors.length === 0,
+    ok: errors.length === 0,
     total_sent: totalSent,
-    total:      uniqueRecipients.length,
-    errors:     errors.length > 0 ? errors : undefined,
-    message:    `Email enviado a ${totalSent} de ${uniqueRecipients.length} destinatarios`,
+    total: uniqueRecipients.length,
+    errors: errors.length > 0 ? errors : undefined,
+    message: `Email enviado a ${totalSent} de ${uniqueRecipients.length} destinatarios`,
   })
 })
 
