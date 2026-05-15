@@ -3,7 +3,7 @@ import { z } from 'zod'
 import crypto from 'crypto'
 import { supabaseAdmin } from '../lib/supabase'
 import { requireAuth, AuthRequest } from '../middleware/auth'
-import { sendAdminReviewEmail, sendProducerApprovedEmail } from '../lib/email'
+import { sendTicketEmail, sendAdminReviewEmail, sendProducerApprovedEmail } from '../lib/email'
 
 const ADMIN_EMAIL   = process.env.ADMIN_EMAIL   || 'hola@matraka-tickets.com'
 const ADMIN_SECRET  = process.env.ADMIN_SECRET  || process.env.JWT_SECRET || 'admin_secret'
@@ -713,28 +713,22 @@ router.delete('/:id/courtesy/:attendeeId', requireAuth, async (req: AuthRequest,
     return
   }
 
-  // 4. Decrementar sold y quantity en ticket_type (mantener conteo limpio)
-  await supabaseAdmin.rpc('decrement_courtesy_slot', {
-    p_ticket_type_id: attendee.ticket_type_id,
-  }).catch((e: any) => {
-    // Fallback manual si la función no existe
-    console.warn('[courtesy-delete] RPC no disponible, usando update manual:', e?.message)
-    return supabaseAdmin
+  // 4. Decrementar sold y quantity en ticket_type para mantener conteo limpio
+  const { data: tt } = await supabaseAdmin
+    .from('ticket_types')
+    .select('quantity, sold')
+    .eq('id', attendee.ticket_type_id)
+    .single()
+
+  if (tt) {
+    await supabaseAdmin
       .from('ticket_types')
-      .select('quantity, sold')
-      .eq('id', attendee.ticket_type_id)
-      .single()
-      .then(({ data: tt }) => {
-        if (!tt) return
-        return supabaseAdmin
-          .from('ticket_types')
-          .update({
-            sold:     Math.max(0, tt.sold - 1),
-            quantity: Math.max(1, tt.quantity - 1),
-          })
-          .eq('id', attendee.ticket_type_id)
+      .update({
+        sold:     Math.max(0, tt.sold - 1),
+        quantity: Math.max(1, tt.quantity - 1),
       })
-  })
+      .eq('id', attendee.ticket_type_id)
+  }
 
   res.json({ ok: true, message: 'Entrada de cortesía eliminada' })
 })
