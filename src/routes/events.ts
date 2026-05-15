@@ -500,6 +500,150 @@ router.post('/:id/approve', async (req: AuthRequest, res: Response) => {
   }
 })
 
+// ── POST /api/events/:id/courtesy — Emitir entrada de cortesía ───────
+const courtesySchema = z.object({
+  attendee_name:  z.string().min(2).max(100),
+  attendee_email: z.string().email(),
+})
+
+router.post('/:id/courtesy', requireAuth, async (req: AuthRequest, res: Response) => {
+  const isAdmin = req.user!.email === ADMIN_EMAIL
+
+  // 1. Verificar ownership del evento
+  let eventQuery = supabaseAdmin
+    .from('events')
+    .select('id, name, event_date, venue, address, city, producer_id')
+    .eq('id', req.params.id)
+
+  if (!isAdmin) {
+    eventQuery = eventQuery.eq('producer_id', req.user!.id)
+  }
+
+  const { data: event } = await eventQuery.single()
+
+  if (!event) {
+    res.status(404).json({ error: 'Evento no encontrado o sin permiso' })
+    return
+  }
+
+  // 2. Validar body
+  const parsed = courtesySchema.safeParse(req.body)
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Datos inválidos', details: parsed.error.flatten() })
+    return
+  }
+
+  const { attendee_name, attendee_email } = parsed.data
+
+  // 3. Buscar o crear el ticket_type "Cortesías" (shopify_variant_id IS NULL)
+  let { data: courtesyType } = await supabaseAdmin
+    .from('ticket_types')
+    .select('id, quantity, sold')
+    .eq('event_id', req.params.id)
+    .eq('name', 'Cortesías')
+    .is('shopify_variant_id', null)
+    .maybeSingle()
+
+  if (!courtesyType) {
+    const { data: newType, error: createErr } = await supabaseAdmin
+      .from('ticket_types')
+      .insert({
+        event_id:   req.params.id,
+        name:       'Cortesías',
+        price:      0,
+        quantity:   0,
+        sold:       0,
+        is_active:  true,
+        sort_order: 99,
+      })
+      .select('id, quantity, sold')
+      .single()
+
+    if (createErr || !newType) {
+      res.status(500).json({ error: 'Error creando tipo de cortesía' })
+      return
+    }
+    courtesyType = newType
+  }
+
+  // 4. Abrir cupo: quantity++ para que la constraint sold <= quantity no falle
+  const { error: qtyErr } = await supabaseAdmin
+    .from('ticket_types')
+    .update({ quantity: courtesyType.quantity + 1 })
+    .eq('id', courtesyType.id)
+
+  if (qtyErr) {
+    res.status(500).json({ error: 'Error actualizando cupo de cortesía' })
+    return
+  }
+
+  // 5. Crear orden (subtotal=0, payment_method='courtesy')
+  const { data: order, error: orderErr } = await supabaseAdmin
+    .from('orders')
+    .insert({
+      event_id:        req.params.id,
+      ticket_type_id:  courtesyType.id,
+      buyer_name:      attendee_name,
+      buyer_email:     attendee_email,
+      quantity:        1,
+      unit_price:      0,
+      subtotal:        0,
+      platform_fee:    0,
+      producer_amount: 0,
+      payment_method:  'courtesy',
+      payment_status:  'paid',
+    })
+    .select('id')
+    .single()
+
+  if (orderErr || !order) {
+    res.status(500).json({ error: 'Error creando orden de cortesía' })
+    return
+  }
+
+  // 6. Generar attendee + QR via RPC (también incrementa sold en ticket_type)
+  const { error: rpcErr } = await supabaseAdmin
+    .rpc('create_attendees_for_order', { order_id: order.id })
+
+  if (rpcErr) {
+    res.status(500).json({ error: 'Error generando QR de cortesía' })
+    return
+  }
+
+  // 7. Leer el attendee recién creado para obtener el QR
+  const { data: attendee } = await supabaseAdmin
+    .from('attendees')
+    .select('attendee_name, qr_code')
+    .eq('order_id', order.id)
+    .single()
+
+  // 8. Enviar email con la entrada (error no bloquea la respuesta)
+  try {
+    await sendTicketEmail({
+      buyerEmail: attendee_email,
+      buyerName:  attendee_name,
+      eventName:  (event as any).name,
+      eventDate:  (event as any).event_date,
+      venue:      (event as any).venue,
+      address:    (event as any).address,
+      city:       (event as any).city,
+      tickets: [{
+        attendeeName:   attendee?.attendee_name || attendee_name,
+        ticketTypeName: 'Cortesía',
+        qrCode:         attendee?.qr_code || '',
+      }],
+    })
+  } catch (emailErr) {
+    console.error('[courtesy] Email falló (entrada ya creada):', emailErr)
+  }
+
+  res.status(201).json({
+    ok:      true,
+    message: `Entrada de cortesía enviada a ${attendee_email}`,
+    qr_code: attendee?.qr_code,
+  })
+})
+
 // ── POST /api/events/:id/cancel — Cancelar evento ─────────────────
 router.post('/:id/cancel', requireAuth, async (req: AuthRequest, res: Response) => {
   const { data: event } = await supabaseAdmin
