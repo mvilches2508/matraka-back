@@ -610,14 +610,31 @@ router.post('/:id/courtesy', requireAuth, async (req: AuthRequest, res: Response
     return
   }
 
-  // 7. Leer el attendee recién creado para obtener el QR
-  const { data: attendee } = await supabaseAdmin
-    .from('attendees')
-    .select('attendee_name, qr_code')
-    .eq('order_id', order.id)
-    .single()
+  // 7. Leer el attendee recién creado para obtener el QR (con retry por lag mínimo de BD)
+  let attendee: { attendee_name: string; qr_code: string } | null = null
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const { data } = await supabaseAdmin
+      .from('attendees')
+      .select('attendee_name, qr_code')
+      .eq('order_id', order.id)
+      .maybeSingle()
+    if (data) { attendee = data; break }
+    await new Promise(r => setTimeout(r, 300))
+  }
 
-  // 8. Enviar email con la entrada (error no bloquea la respuesta)
+  if (!attendee) {
+    console.error('[courtesy] No se encontró el attendee después de 3 intentos, order_id:', order.id)
+    res.status(201).json({
+      ok:           true,
+      message:      `Entrada creada para ${attendee_email}, pero el email no pudo enviarse. Usa "Reenviar" desde la tabla.`,
+      qr_code:      null,
+      email_sent:   false,
+    })
+    return
+  }
+
+  // 8. Enviar email con la entrada
+  let emailSent = false
   try {
     await sendTicketEmail({
       buyerEmail: attendee_email,
@@ -628,19 +645,23 @@ router.post('/:id/courtesy', requireAuth, async (req: AuthRequest, res: Response
       address:    (event as any).address,
       city:       (event as any).city,
       tickets: [{
-        attendeeName:   attendee?.attendee_name || attendee_name,
+        attendeeName:   attendee.attendee_name,
         ticketTypeName: 'Cortesía',
-        qrCode:         attendee?.qr_code || '',
+        qrCode:         attendee.qr_code,
       }],
     })
+    emailSent = true
   } catch (emailErr) {
-    console.error('[courtesy] Email falló (entrada ya creada):', emailErr)
+    console.error('[courtesy] Email falló (entrada ya creada, usar Reenviar):', emailErr)
   }
 
   res.status(201).json({
-    ok:      true,
-    message: `Entrada de cortesía enviada a ${attendee_email}`,
-    qr_code: attendee?.qr_code,
+    ok:         true,
+    message:    emailSent
+      ? `Entrada de cortesía enviada a ${attendee_email}`
+      : `Entrada creada para ${attendee_email}, pero el email falló. Usa "Reenviar" desde la tabla.`,
+    qr_code:    attendee.qr_code,
+    email_sent: emailSent,
   })
 })
 
