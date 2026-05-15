@@ -610,49 +610,51 @@ router.post('/:id/courtesy', requireAuth, async (req: AuthRequest, res: Response
     return
   }
 
-  // 7. Leer el attendee recién creado para obtener el QR (con retry por lag mínimo de BD)
-  let attendee: { attendee_name: string; qr_code: string } | null = null
-  for (let attempt = 0; attempt < 3; attempt++) {
-    const { data } = await supabaseAdmin
-      .from('attendees')
-      .select('attendee_name, qr_code')
-      .eq('order_id', order.id)
-      .maybeSingle()
-    if (data) { attendee = data; break }
-    await new Promise(r => setTimeout(r, 300))
-  }
+  // 7. Leer el attendee igual que hace el endpoint /resend (con JOIN a ticket_types y evento)
+  const { data: attendee } = await supabaseAdmin
+    .from('attendees')
+    .select('id, attendee_name, attendee_email, qr_code, ticket_types(name)')
+    .eq('order_id', order.id)
+    .single()
 
   if (!attendee) {
-    console.error('[courtesy] No se encontró el attendee después de 3 intentos, order_id:', order.id)
     res.status(201).json({
-      ok:           true,
-      message:      `Entrada creada para ${attendee_email}, pero el email no pudo enviarse. Usa "Reenviar" desde la tabla.`,
-      qr_code:      null,
-      email_sent:   false,
+      ok:         true,
+      message:    `Entrada creada para ${attendee_email}, pero el email falló. Usa "Reenviar" desde la tabla.`,
+      qr_code:    null,
+      email_sent: false,
     })
     return
   }
 
-  // 8. Enviar email con la entrada
+  // 8. Enviar email — misma lógica que /resend para garantizar consistencia
+  const { data: eventForEmail } = await supabaseAdmin
+    .from('events')
+    .select('id, name, event_date, venue, address, city')
+    .eq('id', req.params.id)
+    .single()
+
   let emailSent = false
-  try {
-    await sendTicketEmail({
-      buyerEmail: attendee_email,
-      buyerName:  attendee_name,
-      eventName:  (event as any).name,
-      eventDate:  (event as any).event_date,
-      venue:      (event as any).venue,
-      address:    (event as any).address,
-      city:       (event as any).city,
-      tickets: [{
-        attendeeName:   attendee.attendee_name,
-        ticketTypeName: 'Cortesía',
-        qrCode:         attendee.qr_code,
-      }],
-    })
-    emailSent = true
-  } catch (emailErr) {
-    console.error('[courtesy] Email falló (entrada ya creada, usar Reenviar):', emailErr)
+  if (eventForEmail) {
+    try {
+      await sendTicketEmail({
+        buyerEmail: attendee.attendee_email,
+        buyerName:  attendee.attendee_name,
+        eventName:  eventForEmail.name,
+        eventDate:  eventForEmail.event_date,
+        venue:      eventForEmail.venue,
+        address:    (eventForEmail as any).address,
+        city:       eventForEmail.city,
+        tickets: [{
+          attendeeName:   attendee.attendee_name,
+          ticketTypeName: ((attendee as any).ticket_types as { name: string } | null)?.name || 'Cortesía',
+          qrCode:         attendee.qr_code,
+        }],
+      })
+      emailSent = true
+    } catch (emailErr: any) {
+      console.error('[courtesy] Email falló:', emailErr?.message)
+    }
   }
 
   res.status(201).json({
@@ -663,6 +665,78 @@ router.post('/:id/courtesy', requireAuth, async (req: AuthRequest, res: Response
     qr_code:    attendee.qr_code,
     email_sent: emailSent,
   })
+})
+
+// ── DELETE /api/events/:id/courtesy/:attendeeId — Eliminar cortesía ─
+router.delete('/:id/courtesy/:attendeeId', requireAuth, async (req: AuthRequest, res: Response) => {
+  const isAdmin = req.user!.email === ADMIN_EMAIL
+
+  // 1. Verificar ownership del evento
+  let eventQuery = supabaseAdmin
+    .from('events')
+    .select('id')
+    .eq('id', req.params.id)
+  if (!isAdmin) eventQuery = eventQuery.eq('producer_id', req.user!.id)
+  const { data: event } = await eventQuery.single()
+  if (!event) {
+    res.status(404).json({ error: 'Evento no encontrado o sin permiso' })
+    return
+  }
+
+  // 2. Verificar que el attendee existe y es cortesía de este evento
+  const { data: attendee } = await supabaseAdmin
+    .from('attendees')
+    .select('id, ticket_type_id, ticket_types(name)')
+    .eq('id', req.params.attendeeId)
+    .eq('event_id', req.params.id)
+    .maybeSingle()
+
+  if (!attendee) {
+    res.status(404).json({ error: 'Entrada no encontrada' })
+    return
+  }
+
+  const ticketTypeName = (attendee.ticket_types as { name: string } | null)?.name
+  if (ticketTypeName !== 'Cortesías') {
+    res.status(400).json({ error: 'Solo se pueden eliminar entradas de cortesía' })
+    return
+  }
+
+  // 3. Eliminar el attendee
+  const { error: delErr } = await supabaseAdmin
+    .from('attendees')
+    .delete()
+    .eq('id', req.params.attendeeId)
+
+  if (delErr) {
+    res.status(500).json({ error: 'Error eliminando la entrada' })
+    return
+  }
+
+  // 4. Decrementar sold y quantity en ticket_type (mantener conteo limpio)
+  await supabaseAdmin.rpc('decrement_courtesy_slot', {
+    p_ticket_type_id: attendee.ticket_type_id,
+  }).catch((e: any) => {
+    // Fallback manual si la función no existe
+    console.warn('[courtesy-delete] RPC no disponible, usando update manual:', e?.message)
+    return supabaseAdmin
+      .from('ticket_types')
+      .select('quantity, sold')
+      .eq('id', attendee.ticket_type_id)
+      .single()
+      .then(({ data: tt }) => {
+        if (!tt) return
+        return supabaseAdmin
+          .from('ticket_types')
+          .update({
+            sold:     Math.max(0, tt.sold - 1),
+            quantity: Math.max(1, tt.quantity - 1),
+          })
+          .eq('id', attendee.ticket_type_id)
+      })
+  })
+
+  res.json({ ok: true, message: 'Entrada de cortesía eliminada' })
 })
 
 // ── POST /api/events/:id/cancel — Cancelar evento ─────────────────
