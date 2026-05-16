@@ -709,7 +709,7 @@ router.delete('/:id/courtesy/:attendeeId', requireAuth, async (req: AuthRequest,
     return
   }
 
-  const ticketTypeName = (attendee.ticket_types as { name: string } | null)?.name
+  const ticketTypeName = (attendee as any).ticket_types?.name as string | undefined
   if (ticketTypeName !== 'Cortesías') {
     res.status(400).json({ error: 'Solo se pueden eliminar entradas de cortesía' })
     return
@@ -727,11 +727,12 @@ router.delete('/:id/courtesy/:attendeeId', requireAuth, async (req: AuthRequest,
   }
 
   // 3b. Eliminar la orden asociada (evita que queden órdenes huérfanas)
-  if (attendee.order_id) {
+  const orderId = (attendee as any).order_id as string | null
+  if (orderId) {
     await supabaseAdmin
       .from('orders')
       .delete()
-      .eq('id', attendee.order_id)
+      .eq('id', orderId)
       .eq('payment_method', 'courtesy')   // safety: solo borrar si es cortesía
   }
 
