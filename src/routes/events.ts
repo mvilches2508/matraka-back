@@ -86,14 +86,27 @@ router.get('/', requireAuth, async (req: AuthRequest, res: Response) => {
     return
   }
 
-  // Calcular revenue por evento
+  // Revenue real desde orders.subtotal (captura precios libres correctamente)
+  const eventIds = (data || []).map(e => e.id)
+  let revenueByEvent: Record<string, number> = {}
+
+  if (eventIds.length > 0) {
+    const { data: revenueRows } = await supabaseAdmin
+      .from('orders')
+      .select('event_id, subtotal')
+      .in('event_id', eventIds)
+      .eq('payment_status', 'paid')
+
+    for (const row of revenueRows || []) {
+      revenueByEvent[row.event_id] = (revenueByEvent[row.event_id] || 0) + Number(row.subtotal)
+    }
+  }
+
   const eventsWithStats = (data || []).map(event => {
     const tickets = event.ticket_types || []
     const total_capacity = tickets.reduce((s: number, t: { quantity: number }) => s + t.quantity, 0)
-    const total_sold = tickets.reduce((s: number, t: { sold: number }) => s + t.sold, 0)
-    const total_revenue = tickets.reduce(
-      (s: number, t: { sold: number; price: number }) => s + t.sold * t.price, 0
-    )
+    const total_sold     = tickets.reduce((s: number, t: { sold: number }) => s + t.sold, 0)
+    const total_revenue  = revenueByEvent[event.id] ?? 0   // ← desde orders, no ticket_types×price
     return {
       ...event,
       stats: {
@@ -686,7 +699,7 @@ router.delete('/:id/courtesy/:attendeeId', requireAuth, async (req: AuthRequest,
   // 2. Verificar que el attendee existe y es cortesía de este evento
   const { data: attendee } = await supabaseAdmin
     .from('attendees')
-    .select('id, ticket_type_id, ticket_types(name)')
+    .select('id, ticket_type_id, order_id, ticket_types(name)')
     .eq('id', req.params.attendeeId)
     .eq('event_id', req.params.id)
     .maybeSingle()
@@ -711,6 +724,15 @@ router.delete('/:id/courtesy/:attendeeId', requireAuth, async (req: AuthRequest,
   if (delErr) {
     res.status(500).json({ error: 'Error eliminando la entrada' })
     return
+  }
+
+  // 3b. Eliminar la orden asociada (evita que queden órdenes huérfanas)
+  if (attendee.order_id) {
+    await supabaseAdmin
+      .from('orders')
+      .delete()
+      .eq('id', attendee.order_id)
+      .eq('payment_method', 'courtesy')   // safety: solo borrar si es cortesía
   }
 
   // 4. Decrementar sold y quantity en ticket_type para mantener conteo limpio
